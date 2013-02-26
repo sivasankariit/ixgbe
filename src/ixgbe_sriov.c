@@ -1056,17 +1056,17 @@ static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 	}
 }
 
-static void ixgbe_set_vf_rate_limit(struct ixgbe_adapter *adapter, int vf)
+static void ixgbe_set_rate_limit(struct ixgbe_adapter *adapter,
+				 int start_idx, int end_idx,
+				 int tx_rate, int link_speed)
 {
-	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 bcnrc_val = 0;
-	u16 queue, queues_per_pool;
-	u16 tx_rate = adapter->vfinfo[vf].tx_rate;
+	unsigned int index;
 
 	if (tx_rate) {
 		/* start with base link speed value */
-		bcnrc_val = adapter->vf_rate_link_speed;
+		bcnrc_val = link_speed;
 
 		/* Calculate the rate factor values to set */
 		bcnrc_val <<= IXGBE_RTTBCNRC_RF_INT_SHIFT;
@@ -1096,16 +1096,37 @@ static void ixgbe_set_vf_rate_limit(struct ixgbe_adapter *adapter, int vf)
 		break;
 	}
 
+	/* Write value for the Tx queues */
+	for (index = start_idx; index <= end_idx; index++) {
+		unsigned int reg_idx = adapter->tx_ring[index]->reg_idx;
+		IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, reg_idx);
+		IXGBE_WRITE_REG(hw, IXGBE_RTTBCNRC, bcnrc_val);
+	}
+}
+
+int ixgbe_set_queue_rate_limit(struct net_device *dev, int index, u32 rate)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(dev);
+	int speed = ixgbe_link_mbps(adapter);
+
+	ixgbe_set_rate_limit(adapter, index, index, rate, speed);
+
+	return 0;
+}
+
+static void ixgbe_set_vf_rate_limit(struct ixgbe_adapter *adapter, int vf)
+{
+	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
+	u16 queues_per_pool;
+	u16 tx_rate = adapter->vfinfo[vf].tx_rate;
+
 	/* determine how many queues per pool based on VMDq mask */
 	queues_per_pool = __ALIGN_MASK(1, ~vmdq->mask);
 
 	/* write value for all Tx queues belonging to VF */
-	for (queue = 0; queue < queues_per_pool; queue++) {
-		unsigned int reg_idx = (vf * queues_per_pool) + queue;
-
-		IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, reg_idx);
-		IXGBE_WRITE_REG(hw, IXGBE_RTTBCNRC, bcnrc_val);
-	}
+	ixgbe_set_rate_limit(adapter, vf * queues_per_pool,
+			     vf * queues_per_pool + queues_per_pool - 1,
+			     tx_rate, adapter->vf_rate_link_speed);
 }
 
 void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter)

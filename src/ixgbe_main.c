@@ -8279,6 +8279,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #ifdef HAVE_VLAN_RX_REGISTER
 	.ndo_vlan_rx_register	= &ixgbe_vlan_mode,
 #endif
+	.ndo_set_ratelimit	= ixgbe_set_queue_rate_limit
 };
 
 #endif /* HAVE_NET_DEVICE_OPS */
