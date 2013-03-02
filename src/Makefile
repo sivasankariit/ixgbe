@@ -59,15 +59,11 @@ DRIVER_NAME=ixgbe
 # Environment tests
 
 # Kernel Search Path
-# All the places we look for kernel source
-KSP :=  /lib/modules/$(BUILD_KERNEL)/build \
-        /lib/modules/$(BUILD_KERNEL)/source \
-        /usr/src/linux-$(BUILD_KERNEL) \
-        /usr/src/linux-$($(BUILD_KERNEL) | sed 's/-.*//') \
-        /usr/src/kernel-headers-$(BUILD_KERNEL) \
-        /usr/src/kernel-source-$(BUILD_KERNEL) \
-        /usr/src/linux-$($(BUILD_KERNEL) | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/') \
-        /usr/src/linux
+# All the places we look for kernel source (just kernel headers)
+# Siva - Removed default locations of the kernel source and build directories to
+# just compile using kernel headers.
+KSP :=  /usr/src/linux-headers-$(BUILD_KERNEL) \
+        /usr/src/kernel-headers-$(BUILD_KERNEL)
 
 # prune the list down to only values that exist
 # and have an include/linux sub-directory
@@ -84,18 +80,14 @@ ifeq (,$(KSRC))
   $(warning *** Install the appropriate kernel development package, e.g.)
   $(error kernel-devel, for building kernel modules and try again)
 else
-ifeq (/lib/modules/$(BUILD_KERNEL)/source, $(KSRC))
-  KOBJ :=  /lib/modules/$(BUILD_KERNEL)/build
-else
   KOBJ :=  $(KSRC)
-endif
 endif
 
 # Version file Search Path
 VSP :=  $(KOBJ)/include/generated/utsrelease.h \
         $(KOBJ)/include/linux/utsrelease.h \
         $(KOBJ)/include/linux/version.h \
-	$(KOBJ)/include/generated/uapi/linux/version.h \
+        $(KOBJ)/include/generated/uapi/linux/version.h \
         /boot/vmlinuz.version.h
 
 # Config file Search Path
@@ -180,12 +172,12 @@ KVER := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VERSION_FILE) | grep UTS_RELEASE 
         awk '{ print $$3 }' | sed 's/\"//g')
 
 # assume source symlink is the same as build, otherwise adjust KOBJ
-ifneq (,$(wildcard /lib/modules/$(KVER)/build))
-ifneq ($(KSRC),$(shell readlink /lib/modules/$(KVER)/build))
-  KOBJ=/lib/modules/$(KVER)/build
-endif
-endif
-
+# Siva - We ignore this for compiling using kernel headers package
+#ifneq (,$(wildcard /lib/modules/$(KVER)/build))
+#ifneq ($(KSRC),$(shell readlink /lib/modules/$(KVER)/build))
+#  KOBJ=/lib/modules/$(KVER)/build
+#endif
+#endif
 KVER_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
 	grep -m 1 LINUX_VERSION_CODE | awk '{ print $$3 }' | sed 's/\"//g')
 
@@ -258,11 +250,13 @@ obj-m += $(DRIVER_NAME).o
 $(DRIVER_NAME)-objs := $(CFILES:.c=.o)
 else
 default:
-ifeq ($(KOBJ),$(KSRC))
+# Siva - We just compile using the kernel headers in KSRC
+#ifeq ($(KOBJ),$(KSRC))
+#	$(MAKE) -C $(KSRC) SUBDIRS=$(shell pwd) modules
+#else
+#	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) modules
+#endif
 	$(MAKE) -C $(KSRC) SUBDIRS=$(shell pwd) modules
-else
-	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) modules
-endif
 endif
 
 else # ifeq (1,$(shell [ $(KVER_CODE) -ge 132352 ] && echo 1 || echo 0))
@@ -363,9 +357,11 @@ uninstall:
 .PHONY: clean install
 
 clean:
-ifeq ($(KOBJ),$(KSRC))
+# Siva - We just compile using the kernel headers in KSRC
+#ifeq ($(KOBJ),$(KSRC))
+#	$(MAKE) -C $(KSRC) SUBDIRS=$(shell pwd) clean
+#else
+#	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) clean
+#endif
 	$(MAKE) -C $(KSRC) SUBDIRS=$(shell pwd) clean
-else
-	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) clean
-endif
 	rm -rf $(TARGET) $(TARGET:.ko=.o) $(TARGET:.ko=.mod.c) $(TARGET:.ko=.mod.o) $(CFILES:.c=.o) $(MANFILE).gz .*cmd .tmp_versions
